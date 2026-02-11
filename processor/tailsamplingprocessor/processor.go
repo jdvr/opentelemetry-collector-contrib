@@ -66,10 +66,9 @@ type tailSamplingSpanProcessor struct {
 	logger    *zap.Logger
 	tracer    trace.Tracer
 
-	deleteTraceQueue *list.List
-	nextConsumer     consumer.Traces
-	policies         []*policy
-	// Pre-allocated attributes for policy names, this save allocated it for each span
+	deleteTraceQueue    *list.List
+	nextConsumer        consumer.Traces
+	policies            []*policy
 	idToTrace           map[pcommon.TraceID]*traceData
 	tickerFrequency     time.Duration
 	decisionBatcher     idbatcher.Batcher
@@ -199,9 +198,10 @@ func (tsp *tailSamplingSpanProcessor) ConsumeTraces(ctx context.Context, td ptra
 	ctx, span := tsp.tracer.Start(ctx, "tailsampling.ConsumeTraces")
 	defer span.End()
 
-	var totalSpans, totalTraces int64
+	var totalSpans, totalTraces, totalResourceSpans int64
 
 	for _, rss := range td.ResourceSpans().All() {
+		totalResourceSpans++
 		// First group all spans by trace.
 		idToSpansAndScope := groupSpansByTraceKey(rss)
 
@@ -229,6 +229,7 @@ func (tsp *tailSamplingSpanProcessor) ConsumeTraces(ctx context.Context, td ptra
 		span.SetAttributes(
 			attribute.Int64("traces.count", totalTraces),
 			attribute.Int64("spans.count", totalSpans),
+			attribute.Int64("resource_spans.count", totalResourceSpans),
 		)
 	}
 
