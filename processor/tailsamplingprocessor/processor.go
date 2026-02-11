@@ -70,7 +70,6 @@ type tailSamplingSpanProcessor struct {
 	nextConsumer     consumer.Traces
 	policies         []*policy
 	// Pre-allocated attributes for policy names, this save allocated it for each span
-	policyNameAttrs     map[string]attribute.KeyValue
 	idToTrace           map[pcommon.TraceID]*traceData
 	tickerFrequency     time.Duration
 	decisionBatcher     idbatcher.Batcher
@@ -129,7 +128,6 @@ func newTracesProcessor(ctx context.Context, set processor.Settings, nextConsume
 		nonSampledIDCache:  nonSampledDecisions,
 		logger:             set.Logger,
 		idToTrace:          make(map[pcommon.TraceID]*traceData),
-		policyNameAttrs:    make(map[string]attribute.KeyValue),
 		deleteTraceQueue:   list.New(),
 		sampleOnFirstMatch: cfg.SampleOnFirstMatch,
 		blockOnOverflow:    cfg.BlockOnOverflow,
@@ -169,7 +167,6 @@ func (tsp *tailSamplingSpanProcessor) Start(_ context.Context, host component.Ho
 	// so that withPolicies can inject custom policies.
 	if tsp.policies == nil {
 		tsp.policies = policies
-		tsp.updatePolicyNameAttrs()
 	}
 
 	if tsp.decisionBatcher == nil {
@@ -245,16 +242,6 @@ func (tsp *tailSamplingSpanProcessor) SetSamplingPolicy(cfgs []PolicyCfg) {
 		return
 	}
 	tsp.newPolicyChan <- newPolicyCmd{policies: policies}
-}
-
-// updatePolicyNameAttrs pre-allocates attributes for all policy names to reduce allocations
-func (tsp *tailSamplingSpanProcessor) updatePolicyNameAttrs() {
-	tsp.policyNameAttrs = make(map[string]attribute.KeyValue, len(tsp.policies))
-	for _, p := range tsp.policies {
-		if _, ok := tsp.policyNameAttrs[p.name]; !ok {
-			tsp.policyNameAttrs[p.name] = attributePolicyName.String(p.name)
-		}
-	}
 }
 
 func (tsp *tailSamplingSpanProcessor) loadSamplingPolicies(host component.Host, cfgs []PolicyCfg) ([]*policy, error) {
@@ -343,15 +330,6 @@ var (
 
 	attrSampledTrue  = metric.WithAttributes(attribute.String("sampled", "true"))
 	attrSampledFalse = metric.WithAttributes(attribute.String("sampled", "false"))
-
-	// Pre-allocated trace span attributes for decisions to reduce allocations
-	attributePolicyName = attribute.Key("policy.name")
-	// attributeFinalDecision key to represent final decision made
-	attributeFinalDecision = attribute.Key("decision.final")
-	// attributePolicyDecision key to represent individual policy decision
-	attributePolicyDecision   = attribute.Key("policy.decision")
-	spanDecisionToAttribute   = telemetry.NewDecisionAttributes(attributeFinalDecision)
-	policyDecisionToAttribute = telemetry.NewDecisionAttributes(attributePolicyDecision)
 )
 
 type Option func(*tailSamplingSpanProcessor)
@@ -544,7 +522,6 @@ func (tsp *tailSamplingSpanProcessor) iter(tickChan <-chan time.Time, workChan <
 		}
 	case cmd := <-tsp.newPolicyChan:
 		tsp.policies = cmd.policies
-		tsp.updatePolicyNameAttrs()
 		tsp.logger.Debug("New policies loaded", zap.Int("policies.len", len(tsp.policies)))
 	case maxTraceSize := <-tsp.newTraceSizeChan:
 		tsp.maxTraceSizeBytes = maxTraceSize
@@ -734,16 +711,6 @@ func (tsp *tailSamplingSpanProcessor) inCache(id pcommon.TraceID) bool {
 }
 
 func (tsp *tailSamplingSpanProcessor) makeDecision(ctx context.Context, id pcommon.TraceID, traceData *samplingpolicy.TraceData, metrics *policyTickMetrics) (samplingpolicy.Decision, string) {
-	ctx, span := tsp.tracer.Start(ctx, "tailsampling.makeDecision")
-	defer span.End()
-
-	if span.IsRecording() {
-		span.SetAttributes(
-			attribute.String("trace.id", id.String()),
-			attribute.Int64("trace.span_count", traceData.SpanCount),
-		)
-	}
-
 	finalDecision := samplingpolicy.NotSampled
 	samplingDecisions := map[samplingpolicy.Decision]*policy{
 		samplingpolicy.Error:      nil,
@@ -760,8 +727,7 @@ func (tsp *tailSamplingSpanProcessor) makeDecision(ctx context.Context, id pcomm
 	for i, p := range tsp.policies {
 		startTime := time.Now()
 		decision, err := p.evaluator.Evaluate(ctx, id, traceData)
-		evaluationDuration := time.Since(startTime)
-		metrics.addDecisionTime(i, evaluationDuration)
+		metrics.addDecisionTime(i, time.Since(startTime))
 
 		if err != nil {
 			if samplingDecisions[samplingpolicy.Error] == nil {
@@ -819,13 +785,6 @@ func (tsp *tailSamplingSpanProcessor) makeDecision(ctx context.Context, id pcomm
 		metrics.decisionNotSampled++
 	case samplingpolicy.Dropped:
 		metrics.decisionDropped++
-	}
-
-	if span.IsRecording() {
-		span.SetAttributes(spanDecisionToAttribute.Get(finalDecision))
-		if policyName := getPolicyName(sampledPolicy); policyName != "" {
-			span.SetAttributes(attributePolicyName.String(policyName))
-		}
 	}
 
 	return finalDecision, getPolicyName(sampledPolicy)
