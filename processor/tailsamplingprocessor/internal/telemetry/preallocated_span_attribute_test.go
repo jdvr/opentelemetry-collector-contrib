@@ -31,7 +31,9 @@ func TestNewDecisionAttributes_AllDecisions(t *testing.T) {
 		{samplingpolicy.NotSampled, "not_sampled"},
 		{samplingpolicy.Dropped, "dropped"},
 		{samplingpolicy.Error, "error"},
+		//nolint:staticcheck // Testing deprecated but still supported values
 		{samplingpolicy.InvertSampled, "invert_sampled"},
+		//nolint:staticcheck // Testing deprecated but still supported values
 		{samplingpolicy.InvertNotSampled, "invert_not_sampled"},
 	}
 
@@ -84,8 +86,8 @@ func TestDecisionAttributes_StringConsistency(t *testing.T) {
 		samplingpolicy.NotSampled,
 		samplingpolicy.Dropped,
 		samplingpolicy.Error,
-		samplingpolicy.InvertSampled,
-		samplingpolicy.InvertNotSampled,
+		samplingpolicy.InvertSampled,    //nolint:staticcheck // Testing deprecated but still supported values
+		samplingpolicy.InvertNotSampled, //nolint:staticcheck // Testing deprecated but still supported values
 	}
 
 	for _, decision := range allDecisions {
@@ -141,15 +143,15 @@ func TestDecisionAttributes_Concurrent(t *testing.T) {
 		samplingpolicy.NotSampled,
 		samplingpolicy.Dropped,
 		samplingpolicy.Error,
-		samplingpolicy.InvertSampled,
-		samplingpolicy.InvertNotSampled,
+		samplingpolicy.InvertSampled,    //nolint:staticcheck // Testing deprecated but still supported values
+		samplingpolicy.InvertNotSampled, //nolint:staticcheck // Testing deprecated but still supported values
 	}
 
 	// Spawn multiple goroutines that concurrently call Get()
-	for i := 0; i < numGoroutines; i++ {
-		go func(goroutineID int) {
+	for i := range numGoroutines {
+		go func(_ int) {
 			defer wg.Done()
-			for j := 0; j < iterations; j++ {
+			for j := range iterations {
 				// Cycle through all valid decisions
 				decision := validDecisions[j%len(validDecisions)]
 				attr := da.Get(decision)

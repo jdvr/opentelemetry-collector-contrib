@@ -40,7 +40,9 @@ func NewDecisionAttributes(attrKey attribute.Key) *DecisionAttributes {
 	da.attrs[samplingpolicy.NotSampled] = attrKey.String(samplingpolicy.NotSampled.String())
 	da.attrs[samplingpolicy.Dropped] = attrKey.String(samplingpolicy.Dropped.String())
 	da.attrs[samplingpolicy.Error] = attrKey.String(samplingpolicy.Error.String())
+	//nolint:staticcheck // InvertSampled is deprecated but we need to support existing decision values
 	da.attrs[samplingpolicy.InvertSampled] = attrKey.String(samplingpolicy.InvertSampled.String())
+	//nolint:staticcheck // InvertNotSampled is deprecated but we need to support existing decision values
 	da.attrs[samplingpolicy.InvertNotSampled] = attrKey.String(samplingpolicy.InvertNotSampled.String())
 
 	// Pre-compute the unknown attribute for out-of-bounds decisions

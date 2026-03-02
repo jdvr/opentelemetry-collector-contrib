@@ -185,7 +185,7 @@ func (tsp *tailSamplingSpanProcessor) Start(_ context.Context, host component.Ho
 
 // ConsumeTraces is required by the processor.Traces interface.
 func (tsp *tailSamplingSpanProcessor) ConsumeTraces(ctx context.Context, td ptrace.Traces) error {
-	ctx, span := tsp.tracer.Start(ctx, "tailsampling.ConsumeTraces")
+	_, span := tsp.tracer.Start(ctx, "tailsampling.ConsumeTraces")
 	defer span.End()
 
 	var totalSpans, totalTraces, totalResourceSpans int64
